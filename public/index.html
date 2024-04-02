@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Document</title>
+</head>
+<body style="padding: 0px;">
+    <div>
+        <img draggable="false">
+    </div>
+    <script>
+        const main = () => {
+            const mouseEventsBuffer = []
+            const image = document.querySelector('img')
+
+            const mouseEventCallback = (event) => {
+                const rect = image.getBoundingClientRect();
+                const x = (event.clientX - rect.left) / rect.width;
+                const y = (event.clientY - rect.top) / rect.height;
+                const { type } = event;
+
+                mouseEventsBuffer.push({x, y, type})
+            }
+
+            const addListeners = () => {
+                ['mousedown', 'mouseup', 'mousemove'].forEach((type) => {
+                    image.addEventListener(type, mouseEventCallback);
+                })
+            }
+
+            const mouseStateWS = new WebSocket('ws://127.0.0.1:8000/api/v1/ws/mouse-state')
+
+            mouseStateWS.onopen = () => {
+                setInterval(() => {
+                    if (mouseEventsBuffer.length > 0) {
+                        console.log('Sending:', JSON.stringify(mouseEventsBuffer));
+                        const result = mouseStateWS.send(JSON.stringify(mouseEventsBuffer));
+                        console.log('Sent. Result:', result)
+                        mouseEventsBuffer.length = 0;
+                    }
+                }, 100)
+            }
+
+            mouseStateWS.onerror = (error) => {
+                console.error('WebSocket Error:', error);
+            };
+
+            mouseStateWS.onclose = (event) => {
+                console.log('WebSocket Closed:', event);
+            };
+
+            const imageStreamWS = new WebSocket('ws://127.0.0.1:8000/api/v1/ws/image-stream')
+
+            imageStreamWS.onmessage = () => {
+                const blob = event.data;
+                const imageUrl = URL.createObjectURL(blob);
+                image.src = imageUrl;
+                image.onload = () => {
+                    URL.revokeObjectURL(imageUrl);
+                };
+            }
+
+<!--            setInterval(() => {-->
+<!--                image.src = 'http://127.0.0.1:8000/api/v1/images/latest?ref=' + Math.random()-->
+<!--            }, 400)-->
+            addListeners();
+        }
+
+        main();
+    </script>
+</body>
+</html>

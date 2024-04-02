@@ -1,74 +1,96 @@
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import cv2
-import requests
-# import uvicorn
-# from fastapi import FastAPI
-# from fastapi.responses import FileResponse
-# from starlette.middleware.cors import CORSMiddleware
+import dotenv
+import uvicorn
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
+from starlette.websockets import WebSocket
 
-from src.get_objects import get_objects
-from src.lib import android_client
-from src.lib.adb import tap
-from src.lib.adb.commons import swipe
-from src.lib.commons import take_screenshot
+from src.lib.android import take_screenshot_with_api, take_screenshots_with_api
 
-
-def main():
-    get_objects()
-
-    response = requests.get('http://localhost:8080')
-    response.raise_for_status()
-
-    with open('screenshot.png', 'wb') as file:
-        file.write(response.content)
+_mouse_state = None
 
 
-def main_v2():
-    screenshot = android_client.take_screenshot()
+def get_mouse_state():
+    global _mouse_state
 
-    # use cv2 to draw lines in a grid 100px apart.
+    if _mouse_state is None:
+        _mouse_state = MouseState(
+            x=0,
+            y=0,
+            is_mouse_down=False
+        )
 
-    for x in range(0, screenshot.shape[1], 100):
-        cv2.line(screenshot, (x, 0), (x, screenshot.shape[0]), (0, 0, 255), 1)
-        cv2.putText(screenshot, str(x), (x, 50), cv2.FONT_HERSHEY_SIMPLEX, .4, (0, 0, 255), 2)
-
-    for y in range(0, screenshot.shape[0], 100):
-        cv2.line(screenshot, (0, y), (screenshot.shape[1], y), (0, 0, 255), 1)
-        cv2.putText(screenshot, str(y), (50, y), cv2.FONT_HERSHEY_SIMPLEX, .4, (0, 0, 255), 2)
-
-    cv2.imwrite('screenshot.png', screenshot)
-
-    # screenshot_gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
-
-    # tap(100, 100)
-    # swipe(600, 600, 1000, 1000)
+    return _mouse_state
 
 
-# app = FastAPI()
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=['*'],
-#     allow_credentials=True,
-#     allow_methods=['*'],
-#     allow_headers=['*'],
-# )
-#
-#
-# @app.get('/images/test')
-# def get_images():
-#     return FileResponse(
-#         'screenshot.png',
-#         media_type='image/png'
-#     )
-#
-#
+@dataclass
+class MouseState:
+    x: float
+    y: float
+    is_mouse_down: bool = False
+
+    def handle_state_update(self, x: float, y: float, is_mouse_down: bool):
+        self.x = x
+        self.y = y
+        self.is_mouse_down = is_mouse_down
+
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
+
+
+@app.get('/api/v1/images/latest')
+def get_image():
+    screenshot = take_screenshot_with_api()
+    _, buffer = cv2.imencode('.jpeg', screenshot)
+    return Response(
+        content=buffer.tobytes(),
+        media_type='image/jpeg'
+    )
+
+
+@app.websocket('/api/v1/ws/image-stream')
+async def ws_image_stream(websocket: WebSocket):
+    await websocket.accept()
+
+    async for screenshot in take_screenshots_with_api():
+        _, buffer = cv2.imencode('.jpeg', screenshot)
+        await websocket.send_bytes(buffer.tobytes())
+
+
+@app.websocket('/api/v1/ws/mouse-state')
+async def ws_mouse_state(websocket: WebSocket):
+    await websocket.accept()
+
+    while True:
+        data = await websocket.receive_json()
+        print(f"Message text was: {data}")
+
+
+@app.get('/')
+def index():
+    return FileResponse(
+        path='public/index.html'
+    )
+
+
 if __name__ == '__main__':
-#     uvicorn.run(
-#         'main:app',
-#         host='localhost',
-#         port=8080,
-#     )
-#     main()
-    main_v2()
+    dotenv.load_dotenv()
+    # turn_on('0309')
+    uvicorn.run(
+        'main:app',
+        host='localhost',
+        port=8000,
+    )
+    # main()
+    # main_v2()

@@ -1,6 +1,8 @@
+import asyncio
 import subprocess
 import time
 from pathlib import Path
+from typing import Literal
 
 from src.lib.env import get_adb_alias, get_adb_exe_dir
 
@@ -51,6 +53,14 @@ def tap(x: int, y: int):
     execute_command(f'{ADB_ALIAS} shell input tap {x} {y}')
 
 
+async def motionevent(name: Literal['down', 'up', 'move', 'cancel'], x: int, y: int, check_error: bool = True):
+    name = name.upper()
+    return await execute_command_async(
+        command=f'{ADB_ALIAS} shell input motionevent {name} {x} {y}',
+        check_error=check_error
+    )
+
+
 def press_power_button():
     execute_command(f'{ADB_ALIAS} shell input keyevent 26')
 
@@ -60,6 +70,14 @@ def get_wakefulness_state():
     state = state.decode().split('=')[1].strip()
 
     return WakefulnessStates.from_string(state)
+
+
+def forward_port(port: int):
+    execute_command(f'{ADB_ALIAS} forward tcp:{port} tcp:{port}')
+
+
+def start_server():
+    execute_command(f'{ADB_ALIAS} start-server')
 
 
 def turn_on(passcode: str = None):
@@ -109,6 +127,29 @@ def execute_command(
 
     if stderr or process.returncode != 0:
         msg = stderr or f'Error executing command. Args: {process.args}. Return code: {process.returncode}.'
+        raise Exception(msg)
+
+    return stdout
+
+
+async def execute_command_async(
+        command: str,
+        check_error: bool = True
+):
+    process = await asyncio.create_subprocess_shell(
+        command,
+        cwd=get_adb_exe_dir(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+
+    if not check_error:
+        return
+
+    stdout, stderr = await process.communicate()
+
+    if stderr or process.returncode != 0:
+        msg = stderr or f'Error executing command. Command: {command}. Return code: {process.returncode}.'
         raise Exception(msg)
 
     return stdout

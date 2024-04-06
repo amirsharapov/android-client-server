@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import aiohttp
@@ -5,7 +6,8 @@ import cv2
 import numpy as np
 import requests
 
-from src.lib.adb import screencap
+from src.lib import adb
+from src.lib.adb import screencap, execute_command, execute_command_async
 
 
 def take_screenshot_with_adb(save_path: str = None) -> np.ndarray:
@@ -53,3 +55,9 @@ async def take_screenshots_with_api():
                     np.frombuffer(content, np.uint8),
                     cv2.IMREAD_UNCHANGED
                 )
+
+
+async def tap(x: int, y: int):
+    await adb.motionevent('down', x, y)
+    await asyncio.sleep(.02)
+    await adb.motionevent('up', x, y)

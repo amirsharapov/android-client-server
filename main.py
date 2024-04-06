@@ -1,4 +1,9 @@
-from dataclasses import dataclass
+import asyncio
+import json
+import time
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from pathlib import Path
 
 import cv2
 import dotenv
@@ -9,37 +14,112 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import Response
 from starlette.websockets import WebSocket
 
+from src.lib import adb
 from src.lib.android import take_screenshot_with_api, take_screenshots_with_api
 
-_mouse_state = None
+_mouse_events_handler = None
 
 
-def get_mouse_state():
-    global _mouse_state
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    handler = get_mouse_event_handler()
+    await handler.start_task()
 
-    if _mouse_state is None:
-        _mouse_state = MouseState(
-            x=0,
-            y=0,
-            is_mouse_down=False
-        )
+    adb.forward_port(8080)
+    adb.start_server()
 
-    return _mouse_state
+    yield
+
+    await handler.stop_task()
 
 
 @dataclass
-class MouseState:
-    x: float
-    y: float
-    is_mouse_down: bool = False
+class MouseEventHandler:
+    events: list[dict] = field(default_factory=list)
+    events_to_write: list[dict] = field(default_factory=list)
+    mouse_state: dict = field(default_factory=dict)
+    task: asyncio.Task = None
+    add_events_count: int = 0
+    log_path: Path = None
 
-    def handle_state_update(self, x: float, y: float, is_mouse_down: bool):
-        self.x = x
-        self.y = y
-        self.is_mouse_down = is_mouse_down
+    def __post_init__(self):
+        if self.log_path is None:
+            self.log_path = Path(f'local/events_{int(time.time())}.txt')
+
+    async def start_task(self):
+        self.task = asyncio.create_task(self.run())
+
+    async def stop_task(self):
+        self.task.cancel()
+        await self.task
+
+    async def run(self):
+        while True:
+            res = await self.handle_next_event()
+
+            if not res:
+                await asyncio.sleep(.1)
+
+    def add_events(self, events: list[dict]):
+        self.events.extend(events)
+        self.events_to_write.extend(events)
+        self.add_events_count += 1
+
+        if self.add_events_count and self.add_events_count % 10 == 0:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with self.log_path.open('a') as f:
+                f.write(json.dumps(self.events_to_write) + '\n')
+
+            self.events_to_write.clear()
+
+    async def handle_next_event(self):
+        if not self.events:
+            return False
+
+        event = self.events.pop(0)
+
+        if event['type'] == 'mousedown':
+            self.mouse_state['mousedown'] = True
+            await adb.motionevent(
+                'down',
+                int(event['x'] * 1380),
+                int(event['y'] * 800),
+                check_error=False
+            )
+
+        if event['type'] == 'mouseup':
+            self.mouse_state['mousedown'] = False
+            await adb.motionevent(
+                'up',
+                int(event['x'] * 1376),
+                int(event['y'] * 800),
+                check_error=False
+            )
+
+        if event['type'] == 'mousemove' and self.mouse_state.get('mousedown'):
+            await adb.motionevent(
+                'move',
+                int(event['x'] * 1376),
+                int(event['y'] * 800),
+                check_error=False
+            )
+
+        return True
 
 
-app = FastAPI()
+def get_mouse_event_handler():
+    global _mouse_events_handler
+
+    if not _mouse_events_handler:
+        _mouse_events_handler = MouseEventHandler()
+
+    return _mouse_events_handler
+
+
+app = FastAPI(
+    lifespan=lifespan
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -70,11 +150,21 @@ async def ws_image_stream(websocket: WebSocket):
 
 @app.websocket('/api/v1/ws/mouse-state')
 async def ws_mouse_state(websocket: WebSocket):
+    handler = get_mouse_event_handler()
     await websocket.accept()
 
     while True:
         data = await websocket.receive_json()
-        print(f"Message text was: {data}")
+        handler.add_events(data)
+
+
+@app.get('/api/v1/images/clicks-and-drags-overlay')
+def get_clicks_and_drags_overlay():
+    path = Path('clicks_and_drags_overlay.png')
+    return FileResponse(
+        path=path,
+        media_type='image/png'
+    )
 
 
 @app.get('/')
@@ -86,11 +176,8 @@ def index():
 
 if __name__ == '__main__':
     dotenv.load_dotenv()
-    # turn_on('0309')
     uvicorn.run(
         'main:app',
         host='localhost',
         port=8000,
     )
-    # main()
-    # main_v2()

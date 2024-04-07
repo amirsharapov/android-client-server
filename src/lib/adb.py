@@ -53,11 +53,11 @@ def tap(x: int, y: int):
     execute_command(f'{ADB_ALIAS} shell input tap {x} {y}')
 
 
-async def motionevent(name: Literal['down', 'up', 'move', 'cancel'], x: int, y: int, check_error: bool = True):
+async def motionevent(name: Literal['down', 'up', 'move', 'cancel'], x: int, y: int, do_async: bool = True):
     name = name.upper()
     return await execute_command_async(
         command=f'{ADB_ALIAS} shell input motionevent {name} {x} {y}',
-        check_error=check_error
+        check_error=do_async
     )
 
 

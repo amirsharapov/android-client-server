@@ -345,7 +345,7 @@ async def run(label: str):
                 adb_motionevent,
                 int(event['x'] * 1376),
                 int(event['y'] * 800),
-                check_error=check_error
+                do_async=check_error
             )
 
             if not check_error:
@@ -360,7 +360,7 @@ async def run(label: str):
                 adb_motionevent,
                 int(event['x'] * 1376),
                 int(event['y'] * 800),
-                check_error=check_error
+                do_async=check_error
             )
 
             if not check_error:

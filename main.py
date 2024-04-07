@@ -85,7 +85,7 @@ class MouseEventHandler:
                 'down',
                 int(event['x'] * 1380),
                 int(event['y'] * 800),
-                check_error=False
+                do_async=False
             )
 
         if event['type'] == 'mouseup':
@@ -94,7 +94,7 @@ class MouseEventHandler:
                 'up',
                 int(event['x'] * 1376),
                 int(event['y'] * 800),
-                check_error=False
+                do_async=False
             )
 
         if event['type'] == 'mousemove' and self.mouse_state.get('mousedown'):
@@ -102,7 +102,7 @@ class MouseEventHandler:
                 'move',
                 int(event['x'] * 1376),
                 int(event['y'] * 800),
-                check_error=False
+                do_async=False
             )
 
         return True

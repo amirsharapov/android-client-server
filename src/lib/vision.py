@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal
 
 import cv2
 import numpy as np
@@ -16,7 +16,7 @@ class Rectangle:
     def __iter__(self):
         return iter((self.x, self.y, self.w, self.h))
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: Literal['x', 'y', 'w', 'h'] | int):
         if isinstance(item, int):
             return (self.x, self.y, self.w, self.h)[item]
 
@@ -43,7 +43,7 @@ class Rectangle:
         return Point(self.x + self.w, self.y + self.h)
 
     @property
-    def middle(self):
+    def center(self):
         return Point(
             (self.x + self.x + self.w) // 2,
             (self.y + self.y + self.h) // 2
@@ -70,7 +70,7 @@ class Point:
     def __iter__(self):
         return iter((self.x, self.y))
 
-    def __getitem__(self, item):
+    def __getitem__(self, item: Literal['x', 'y'] | int):
         if isinstance(item, int):
             return (self.x, self.y)[item]
 
@@ -196,3 +196,22 @@ def match_template_from_path(
         template_mask,
         filter_inf
     )
+
+
+def match_templates_from_paths(
+        image: np.ndarray,
+        paths: list[str | Path],
+        threshold: float = 0.8,
+        method: int = cv2.TM_CCOEFF_NORMED,
+        use_mask: bool = False,
+        filter_inf: bool = True
+):
+    for path in paths:
+        yield from match_template_from_path(
+            image,
+            path,
+            threshold,
+            method,
+            use_mask,
+            filter_inf
+        )

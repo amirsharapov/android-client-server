@@ -58,6 +58,18 @@ async def take_screenshots_with_api():
 
 
 async def tap(x: int, y: int):
-    await adb.motionevent('down', x, y)
+    await press(x, y)
     await asyncio.sleep(.02)
-    await adb.motionevent('up', x, y)
+    await release(x, y)
+
+
+async def press(x: int, y: int, do_async: bool = True):
+    await adb.motionevent('down', x, y, do_async=do_async)
+
+
+async def release(x: int, y: int, do_async: bool = True):
+    await adb.motionevent('up', x, y, do_async=do_async)
+
+
+async def move(x: int, y: int, do_async: bool = True):
+    await adb.motionevent('move', x, y, do_async=do_async)

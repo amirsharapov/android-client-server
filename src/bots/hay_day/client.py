@@ -14,7 +14,7 @@ from src.lib.vision import Rectangle
 SlotType = Literal[
     'sold',
     'open',
-    'occupied'
+    'occupied_by_wheat'
 ]
 
 
@@ -54,12 +54,9 @@ class Farm:
 
 @dataclass
 class RoadsideShopSlot:
-    type: Literal[
-        'sold',
-        'open',
-        'purchase'
-    ]
+    type: SlotType
     rectangle: Rectangle
+    item: str = None
 
 
 @dataclass
@@ -89,7 +86,43 @@ class RoadsideShop:
         )
 
     @staticmethod
-    async def scroll_through_shop():
+    async def click_advertise_now_button():
+        image = await android.take_screenshot_with_api()
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        rects = templates.match_roadside_shop_advertise_now_text(image)
+        rects = list(rects)
+
+        assert len(rects) == 1
+
+        rect = rects[0]
+
+        x = rect.bottom_right.x + 40
+        y = rect.center.y
+
+        await android.tap(x, y)
+
+    @staticmethod
+    async def click_create_advertisement_button():
+        image = await android.take_screenshot_with_api()
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        rects = templates.create_advertisement_button(image)
+        rects = list(rects)
+
+        assert len(rects) == 1
+
+        rect = rects[0]
+
+        await android.tap(
+            rect.center.x,
+            rect.center.y
+        )
+
+    @staticmethod
+    async def scroll_through_shop(reverse: bool = False):
+        direction = 'backward' if reverse else 'forward'
+
         while True:
             image_bgr = await android.take_screenshot_with_api()
             image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
@@ -101,11 +134,12 @@ class RoadsideShop:
 
             yield image_bgr
 
-            purchase_new_slot = templates.match_purchase_new_roadside_shop_slot(image)
-            purchase_new_slot = next(purchase_new_slot, None)
+            if direction == 'forward':
+                purchase_new_slot = templates.match_purchase_new_roadside_shop_slot(image)
+                purchase_new_slot = next(purchase_new_slot, None)
 
-            if purchase_new_slot:
-                break
+                if purchase_new_slot:
+                    break
 
             padding = 180
 
@@ -128,8 +162,16 @@ class RoadsideShop:
             x_spacing = (start_x - end_x) // n
             y_spacing = (start_y - end_y) // n
 
-            points = [(start_x - i * x_spacing, start_y - i * y_spacing) for i in range(n)]
-            points = sorted(points, key=lambda p: -p[0])
+            points = [
+                (start_x - i * x_spacing, start_y - i * y_spacing)
+                for i in range(n)
+            ]
+
+            if direction == 'forward':
+                points = sorted(points, key=lambda p: -p[0])
+
+            else:
+                points = sorted(points, key=lambda p: p[0])
 
             await android.press(points[0][0], points[0][1])
 
@@ -140,21 +182,25 @@ class RoadsideShop:
             await asyncio.sleep(.33)
 
     async def iterate_slots(self, slot_types: list[SlotType] = None, reverse: bool = False):
-        async for image in self.scroll_through_shop():
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        match_fns = {
+            'sold': templates.match_sold_roadside_shop_slot,
+            'open': templates.match_open_roadside_shop_slot,
+            'occupied_by_wheat': templates.match_roadside_shop_occupied_by_wheat,
+        }
 
-            rects = templates.match_sold_roadside_shop_slot(image)
+        async for _ in self.scroll_through_shop(reverse=reverse):
+            for slot_type in slot_types:
+                image = await android.take_screenshot_with_api()
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-            for rect in rects:
-                yield RoadsideShopSlot('sold', rect)
+                match_fn = match_fns[slot_type]
+                rects = match_fn(image)
 
-            image = await android.take_screenshot_with_api()
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-            rects = templates.match_open_roadside_shop_slot(image)
-
-            for rect in rects:
-                yield RoadsideShopSlot('open', rect)
+                for rect in rects:
+                    yield RoadsideShopSlot(
+                        slot_type,
+                        rect
+                    )
 
 
 @dataclass

@@ -18,6 +18,7 @@ from src.lib import adb
 from src.lib.android import take_screenshot_with_api, take_screenshots_with_api
 
 _mouse_events_handler = None
+_last_screenshot_timestamp = None
 
 
 @asynccontextmanager
@@ -44,7 +45,7 @@ class MouseEventHandler:
 
     def __post_init__(self):
         if self.log_path is None:
-            self.log_path = Path(f'local/events_{int(time.time())}.txt')
+            self.log_path = Path(f'local/events/events_{int(time.time())}.txt')
 
     async def start_task(self):
         self.task = asyncio.create_task(self.run())
@@ -117,9 +118,7 @@ def get_mouse_event_handler():
     return _mouse_events_handler
 
 
-app = FastAPI(
-    lifespan=lifespan
-)
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -141,9 +140,15 @@ def get_image():
 
 @app.websocket('/api/v1/ws/image-stream')
 async def ws_image_stream(websocket: WebSocket):
+    global _last_screenshot_timestamp
+
     await websocket.accept()
 
     async for screenshot in take_screenshots_with_api():
+        if _last_screenshot_timestamp is None or time.time() - _last_screenshot_timestamp > 12:
+            _last_screenshot_timestamp = time.time()
+            cv2.imwrite(f'local/screenshots/{_last_screenshot_timestamp}.jpg', screenshot)
+
         _, buffer = cv2.imencode('.jpeg', screenshot)
         await websocket.send_bytes(buffer.tobytes())
 

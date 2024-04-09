@@ -10,8 +10,8 @@ import dotenv
 import matplotlib.pyplot as plt
 import numpy as np
 
-from src.lib import adb
-
+from src.bots.hay_day.client import HayDayClient
+from src.lib import adb, android
 
 MANUAL_ASSOCIATIONS = {
     'harvest_crops': [0, 2],
@@ -27,7 +27,7 @@ SEGMENT_ASSOCIATIONS_BY_INDEX = [
 
 
 def get_events():
-    file = Path('local/events_1712080057.txt')
+    file = Path('local/events/events_1712080057.txt')
     events = []
 
     for line in file.read_text().splitlines():
@@ -367,13 +367,81 @@ async def run(label: str):
                 await asyncio.sleep(random.uniform(*delay_between_events), 3)
 
 
+async def sell_all_pending_wheat():
+    """
+    - Check color of plus signs
+    - Use memory to store the state of the device without needing to constantly check screenshots.
+    """
+    client = HayDayClient('farm')
+
+    await client.farm.click_roadside_shop()
+    await asyncio.sleep(.2)
+
+    has_wheat_left = True
+
+    async for slot in client.roadside_shop.iterate_slots(slot_types=['sold', 'open']):
+        if slot.type == 'sold':
+            await android.tap(*slot.rectangle.center)
+            await asyncio.sleep(.15)
+            continue
+
+        if slot.type == 'open':
+            if not has_wheat_left:
+                continue
+
+            await android.tap(*slot.rectangle.center)
+            await asyncio.sleep(.5)
+
+            if not await client.roadside_shop.sale_preview.is_wheat_icon_visible():
+                has_wheat_left = False
+                await client.roadside_shop.click_x_button()
+                await asyncio.sleep(.5)
+                continue
+
+            await client.roadside_shop.sale_preview.click_wheat_icon()
+            await client.roadside_shop.sale_preview.click_quantity_plus_button(5)
+            await client.roadside_shop.sale_preview.click_price_plus_max_button()
+            await client.roadside_shop.sale_preview.click_put_on_sale_button()
+            await asyncio.sleep(.5)
+
+    async for slot in client.roadside_shop.iterate_slots(slot_types=['occupied_by_wheat'], reverse=True):
+        if slot.type == 'occupied_by_wheat':
+            await android.tap(*slot.rectangle.center)
+            await asyncio.sleep(.5)
+
+            await client.roadside_shop.click_advertise_now_button()
+            await asyncio.sleep(.5)
+
+            await client.roadside_shop.click_create_advertisement_button()
+            await asyncio.sleep(.5)
+
+            break
+
+    await client.roadside_shop.click_x_button()
+
+
 async def run_async():
     while True:
         await run('plant_crops')
-        await asyncio.sleep(random.uniform(123, 125), 3)
+        start = time.time()
+
+        await asyncio.sleep(1)
+        await sell_all_pending_wheat()
+        elapsed = time.time() - start
+
+        if elapsed <= 125:
+            sleep_time = random.uniform(123 - elapsed, 125 - elapsed)
+            await asyncio.sleep(sleep_time)
 
         await run('harvest_crops')
-        await asyncio.sleep(random.uniform(3, 5), 3)
+        await asyncio.sleep(random.uniform(3, 5))
+
+        for _ in range(2):
+            await run('plant_crops')
+            await asyncio.sleep(random.uniform(123, 125))
+
+            await run('harvest_crops')
+            await asyncio.sleep(random.uniform(3, 5))
 
 
 if __name__ == '__main__':

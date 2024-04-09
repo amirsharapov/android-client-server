@@ -1,3 +1,5 @@
+from typing import Iterable
+
 import cv2
 import numpy as np
 
@@ -5,7 +7,7 @@ from src.lib import vision
 from src.lib.vision import Rectangle, Match
 
 
-def merge_matches(matches: list[Match]):
+def merge_matches(matches: Iterable[Match]):
     rects = [tuple(match.rectangle) for match in matches]
     rects, _ = cv2.groupRectangles(rects, groupThreshold=1, eps=0.5)
 
@@ -36,6 +38,7 @@ def match_roadside_shop(image: np.ndarray):
         vision.match_template_from_path(
             image=image,
             path='public/images/hay_day/templates/farm/roadside_shop.png',
+            threshold=0.65,
             use_mask=True,
         )
     )
@@ -156,6 +159,36 @@ def match_roadside_shop_sale_preview_put_on_sale_button(image: np.ndarray):
         vision.match_template_from_path(
             image=image,
             path='public/images/hay_day/templates/roadside_shop/sale_preview/put_on_sale.png',
+            use_mask=True,
+        )
+    )
+
+
+def match_roadside_shop_advertise_now_text(image: np.ndarray):
+    yield from merge_matches(
+        vision.match_template_from_path(
+            image=image,
+            path='public/images/hay_day/templates/roadside_shop/advertise_now.png',
+            use_mask=True,
+        )
+    )
+
+
+def match_roadside_shop_occupied_by_wheat(image: np.ndarray):
+    yield from merge_matches(
+        vision.match_template_from_path(
+            image=image,
+            path='public/images/hay_day/templates/roadside_shop/occupied_by_wheat.png',
+            use_mask=True,
+        )
+    )
+
+
+def create_advertisement_button(image: np.ndarray):
+    yield from merge_matches(
+        vision.match_template_from_path(
+            image=image,
+            path='public/images/hay_day/templates/roadside_shop/create_advertisement.png',
             use_mask=True,
         )
     )
